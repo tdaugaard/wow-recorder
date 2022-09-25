@@ -5,9 +5,9 @@ import { EventEmitter } from "stream";
 
 type ConfigurationSchema = {
     storagePath: string,
-    bufferStoragePath?: string,
-    logPath: string,
-    logPathClassic?: string,
+    bufferPath?: string,
+    retailLogPath: string,
+    classicLogPath?: string,
     maxStorage: number,
     monitorIndex: number,
     selectedCategory: number,
@@ -26,17 +26,17 @@ const schema = {
         type: 'string',
         default: '',
     },
-    bufferStoragePath: {
+    bufferPath: {
         description: 'Filesystem path where temporary videos files are stored',
         type: 'string',
         default: '',
     },
-    logPath: {
+    retailLogPath: {
         description: 'Filesystem path where WoW Retail combat logs are stored',
         type: 'string',
         default: '',
     },
-    logPathClassic: {
+    classicLogPath: {
         description: 'Filesystem path where WoW Classic combat logs are stored',
         type: 'string',
         default: '',
@@ -102,26 +102,31 @@ export default class ConfigService extends EventEmitter {
             const [fn, key] = args;
 
             if (fn === 'get') {
-                const value = this._store.get(key);
-                console.log("[ConfigService] Got from config store: ", key, value);
+                const value = this.get(key);
+                console.log('[ConfigService] Get from config store:', key, value);
                 event.returnValue = value;
             } else
             if (fn === 'set') {
                 const value = args[2];
-                console.log("[ConfigService] Setting in config store: ", key, value);
-                this._store.set(key, value);
+                this.set(key, value);
+                console.log('[ConfigService] Set in config store:', key, value);
             }
         });
     }
 
     validate(): boolean {
-        if (!this._store.get('storagePath')) {
+        const storagePath = this.get('storagePath');
+        if (storagePath) {
+            this.updateDefaults('storagePath', storagePath);
+        }
+
+        if (!this.get('storagePath')) {
             console.warn('[ConfigService] Validation failed: `storagePath` is empty');
             return false;
         }
 
-        if (!this._store.get('logPath')) {
-            console.warn('[ConfigService] Validation failed: `logPath` is empty');
+        if (!this.get('retailLogPath') && !this.get('classicLogPath')) {
+            console.warn('[ConfigService] Validation failed: `retailLogPath` and `classicLogPath` are empty. One needs to be set.');
             return false;
         }
 
@@ -133,15 +138,31 @@ export default class ConfigService extends EventEmitter {
     }
 
     get<T>(key: keyof ConfigurationSchema): T {
-        if (!this._store.has(key) && schema[key].default) {
-            return (schema[key].default as T);
+        if (!schema[key]) {
+            throw Error(`[ConfigService] Attempted to get invalid configuration key '${key}'`)
         }
 
-        return (this._store.get(key) as T)
+        const value = this._store.get(key);
+
+        if (!this._store.has(key) || (value === '' || value === null || value === undefined)) {
+            if (schema[key] && schema[key].default) {
+                return (schema[key].default as T);
+           }
+        }
+
+        return (value as T)
     }
 
     set(key: keyof ConfigurationSchema, value: any): void {
-        this._store.set(key, value);
+        if (!schema[key]) {
+            throw Error(`[ConfigService] Attempted to set invalid configuration key '${key}'`)
+        }
+
+        if (value === null || value === undefined || value === '') {
+            this._store.delete(key);
+        } else {
+            this._store.set(key, value);
+        }
     }
 
     getPath(key: keyof ConfigurationSchema): string {
@@ -157,16 +178,16 @@ export default class ConfigService extends EventEmitter {
     }
 
     /**
-     * Return a value for the `bufferStoragePath` setting, based on the given `storagePath`.
+     * Return a value for the `bufferPath` setting, based on the given `storagePath`.
      *
-     * If `bufferStoragePath` is not empty, it will simply be returned.
-     * If `bufferStoragePath` is empty, and `storagePath` is empty, so will `bufferStoragePath` be.
-     * If `bufferStoragePath` is empty, and `storagePath` is not empty, we'll construct
+     * If `bufferPath` is not empty, it will simply be returned.
+     * If `bufferPath` is empty, and `storagePath` is empty, so will `bufferPath` be.
+     * If `bufferPath` is empty, and `storagePath` is not empty, we'll construct
      * a default value.
      */
-    private resolveBufferStoragePath (storagePath?: string, bufferStoragePath?: string): string {
-        if (bufferStoragePath) {
-            return bufferStoragePath;
+    private resolvebufferPath (storagePath?: string, bufferPath?: string): string {
+        if (bufferPath) {
+            return bufferPath;
         }
 
         // Do not use `path` here, as it uses Node JS `process` which isn't available in the render process.
@@ -174,10 +195,10 @@ export default class ConfigService extends EventEmitter {
     }
 
     private updateDefaults(key: string, newValue: any): void {
-        if (key == 'storagePath') {
-            schema['bufferStoragePath'].default = this.resolveBufferStoragePath(
+        if (key === 'storagePath') {
+            schema['bufferPath'].default = this.resolvebufferPath(
                 newValue as string,
-                this.get('bufferStoragePath')
+                this.get('bufferPath')
             );
             return;
         }

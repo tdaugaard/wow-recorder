@@ -55,7 +55,7 @@ console.log("[Main] App starting: version", app.getVersion());
 const loadRecorderOptions = (cfg: ConfigService): RecorderOptionsType => {
   const config = {
     storageDir:           cfg.get<string>('storagePath'),
-    bufferStorageDir:     cfg.get<string>('bufferStoragePath'),
+    bufferStorageDir:     cfg.get<string>('bufferPath'),
     maxStorage:           cfg.get<number>('maxStorage'),
     monitorIndex:         cfg.get<number>('monitorIndex'),
     audioInputDeviceId:   cfg.get<string>('audioInputDevice'),
@@ -75,8 +75,8 @@ const loadRecorderOptions = (cfg: ConfigService): RecorderOptionsType => {
 const cfg = new ConfigService();
 let recorderOptions: RecorderOptionsType = loadRecorderOptions(cfg);
 let baseLogPaths: string[] = [
-  cfg.getPath('log-path'),
-  cfg.getPath('log-path-classic'),
+  cfg.getPath('retailLogPath'),
+  cfg.getPath('classicLogPath'),
 ];
 
 // Default video player settings on app start
