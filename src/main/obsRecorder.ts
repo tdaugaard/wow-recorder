@@ -16,41 +16,6 @@ const obsInitErrors: { [key: string]: string } = {
 };
 
 /*
-* configureOBS
-*/
-const configureOBS = (baseStoragePath: string) => {
-  console.debug('[OBS] Configuring OBS');
-  setSetting('Output', 'Mode', 'Advanced');
-  const availableEncoders = getAvailableValues('Output', 'Recording', 'RecEncoder');
-
-  // Get a list of available encoders, select the last one.
-  console.debug("[OBS] Available encoder: " + JSON.stringify(availableEncoders));
-  const selectedEncoder = availableEncoders.slice(-1)[0] || 'x264';
-  console.debug("[OBS] Selected encoder: " + selectedEncoder);
-  setSetting('Output', 'RecEncoder', selectedEncoder);
-
-  // Set output path and video format.
-  setSetting('Output', 'RecFilePath', baseStoragePath);
-  setSetting('Output', 'RecFormat', 'mp4');
-  
-  if (selectedEncoder.toLowerCase().includes("amf")) {
-    // For AMF encoders, can't set 'lossless' bitrate.
-    // It interprets it as zero and fails to start.
-    // See https://github.com/aza547/wow-recorder/issues/40.
-    setSetting('Output', 'Recbitrate', 50000);
-  }
-  else {
-    // No idea how this works, but it does. 
-    setSetting('Output', 'Recbitrate', 'Lossless');
-  }
-   
-  setSetting('Output', 'Recmax_bitrate', 300000); 
-  setSetting('Video', 'FPSCommon', 60);
-
-  console.debug('[OBS] OBS Configured');
-}
-
-/*
 * Get information about primary display
 * @param zero starting monitor index
 */
@@ -242,6 +207,7 @@ export default class ObsRecorder {
   private _options: RecorderOptionsType;
   private _initialized: boolean = false;
   private _signalQueue = new WaitQueue<any>();
+  private _obsEncoders: string[] = [];
 
   /*
   * Init the library, launch OBS Studio instance, configure it, set up sources and scene
@@ -250,6 +216,8 @@ export default class ObsRecorder {
     this._options = options;
 
     this.initOBS();
+
+    this._obsEncoders = this.getObsEncoders();
   }
 
   get initialized(): boolean {
@@ -280,9 +248,50 @@ export default class ObsRecorder {
       this._options = options;
     }
 
-    configureOBS(this._options.bufferStorageDir);
+    this.configureOBS();
     scene = setupScene(this._options.monitorIndex);
     setupSources(scene, this._options.audioInputDeviceId, this._options.audioOutputDeviceId);
+  }
+
+  /**
+   * Return an array of available output encoders from OBS½
+   */
+  getObsEncoders(): string[] {
+    return getAvailableValues('Output', 'Recording', 'RecEncoder');
+  }
+
+  /*
+   * configureOBS
+   */
+  private configureOBS(): void {
+    console.debug('[ObsRecorder] Configuring OBS');
+
+    const obsEncoder = this._obsEncoders.at(-1) || 'x264';
+
+    setSetting('Output', 'Mode', 'Advanced');
+    setSetting('Output', 'RecEncoder', obsEncoder);
+
+    // Set output path and video format.
+    setSetting('Output', 'RecFilePath', this._options.bufferStorageDir);
+    setSetting('Output', 'RecFormat', 'mp4');
+
+    if (obsEncoder.toLowerCase().includes("amf")) {
+      // For AMF encoders, can't set 'lossless' bitrate.
+      // It interprets it as zero and fails to start.
+      // See https://github.com/aza547/wow-recorder/issues/40.
+      setSetting('Output', 'Recbitrate', 50000);
+    }
+    else {
+      // No idea how this works, but it does.
+    // No idea how this works, but it does.
+      // No idea how this works, but it does.
+      setSetting('Output', 'Recbitrate', 'Lossless');
+    }
+
+    setSetting('Output', 'Recmax_bitrate', 300000);
+    setSetting('Video', 'FPSCommon', 60);
+
+    console.debug('[ObsRecorder] OBS Configured');
   }
 
   /*
