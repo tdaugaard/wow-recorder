@@ -5,46 +5,15 @@ import { RecorderOptionsType } from "./recorder";
 import { ObsSignal, OurDisplayType } from "./types";
 import { Size } from "electron";
 import { v4 as uuid } from 'uuid';
-const waitQueue = new WaitQueue<any>();
 const path = require('path');
 const osn = require("obs-studio-node");
 
 let scene = null;
 
-/*
-* initOBS
-*/
-const initOBS = () => {
-  console.debug('[OBS] Initializing OBS...');
-  osn.NodeObs.IPC.host(`warcraft-recorder-${uuid()}`);
-  osn.NodeObs.SetWorkingDirectory(fixPathWhenPackaged(path.join(__dirname,'../../', 'node_modules', 'obs-studio-node')));
-
-  const obsDataPath = fixPathWhenPackaged(path.join(__dirname, 'osn-data')); // OBS Studio configs and logs
-  // Arguments: locale, path to directory where configuration and logs will be stored, your application version
-  const initResult = osn.NodeObs.OBS_API_initAPI('en-US', obsDataPath, '1.0.0');
-
-  if (initResult !== 0) {
-    const errorReasons = {
-      '-2': 'DirectX could not be found on your system. Please install the latest version of DirectX for your machine here <https://www.microsoft.com/en-us/download/details.aspx?id=35?> and try again.',
-      '-5': 'Failed to initialize OBS. Your video drivers may be out of date, or Streamlabs OBS may not be supported on your system.',
-    }
-
-    // @ts-ignore
-    const errorMessage = errorReasons[initResult.toString()] || `An unknown error #${initResult} was encountered while initializing OBS.`;
-
-    console.error('[OBS] OBS init failure', errorMessage);
-
-    ObsRecorder.getInstance().shutdown();
-
-    throw Error(errorMessage);
-  }
-
-  osn.NodeObs.OBS_service_connectOutputSignals((signalInfo: any) => {
-    waitQueue.push(signalInfo);
-  });
-
-  console.debug('[OBS] OBS initialized');
-}
+const obsInitErrors: { [key: string]: string } = {
+  '-2': 'DirectX could not be found on your system. Please install the latest version of DirectX for your machine here <https://www.microsoft.com/en-us/download/details.aspx?id=35?> and try again.',
+  '-5': 'Failed to initialize OBS. Your video drivers may be out of date, or Streamlabs OBS may not be supported on your system.',
+};
 
 /*
 * configureOBS
@@ -264,37 +233,6 @@ const getAvailableValues = (category: any, subcategory: any, parameter: any) => 
   return parameterSettings.values.map( (value: any) => Object.values(value)[0]);
 }
 
-/*
-* Assert a signal from OBS is as expected, if it is not received
-* within 5 seconds or is not as expected then throw an error.
-*/
-const assertNextSignal = async (value: string) => {
-
-  // Don't wait more than 5 seconds for the signal.
-  let signalInfo = await Promise.race([
-    waitQueue.shift(),
-    new Promise((_, reject) => {
-      setTimeout(reject, 5000, "OBS didn't signal " + value + " in time")}
-    )
-  ]);
-
-  // Assert the type is as expected.
-  if (signalInfo.type !== "recording") {
-    console.error("[OBS] " + signalInfo);
-    console.error("[OBS] OBS signal type unexpected", signalInfo.signal, value);
-    throw Error("OBS behaved unexpectedly (2)");
-  }
-
-  // Assert the signal value is as expected.
-  if (signalInfo.signal !== value) {
-    console.error("[OBS] " + signalInfo);
-    console.error("[OBS] OBS signal value unexpected", signalInfo.signal, value);
-    throw Error("OBS behaved unexpectedly (3)");
-  }
-
-  console.debug("[OBS] Asserted OBS signal:", value);
-}
-
 export default class ObsRecorder {
   /**
    * Holds the singleton instance for this class as created via
@@ -303,6 +241,7 @@ export default class ObsRecorder {
   private static _instance: ObsRecorder;
   private _options: RecorderOptionsType;
   private _initialized: boolean = false;
+  private _signalQueue = new WaitQueue<any>();
 
   /*
   * Init the library, launch OBS Studio instance, configure it, set up sources and scene
@@ -310,8 +249,7 @@ export default class ObsRecorder {
   private constructor(options: RecorderOptionsType) {
     this._options = options;
 
-    initOBS();
-    this._initialized = true;
+    this.initOBS();
   }
 
   get initialized(): boolean {
@@ -358,7 +296,7 @@ export default class ObsRecorder {
     console.log("[ObsRecorder] Start recording");
 
     osn.NodeObs.OBS_service_startRecording();
-    assertNextSignal(ObsSignal.Start);
+    this.assertNextSignal(ObsSignal.Start);
   }
 
   /*
@@ -368,9 +306,9 @@ export default class ObsRecorder {
     console.log("[ObsRecorder] Stop recording");
 
     osn.NodeObs.OBS_service_stopRecording();
-    assertNextSignal(ObsSignal.Stopping);
-    assertNextSignal(ObsSignal.Stop);
-    assertNextSignal(ObsSignal.Wrote);
+    this.assertNextSignal(ObsSignal.Stopping);
+    this.assertNextSignal(ObsSignal.Stop);
+    this.assertNextSignal(ObsSignal.Wrote);
   }
 
   /*
@@ -395,5 +333,67 @@ export default class ObsRecorder {
     console.debug('[ObsRecorder] Shutdown successfully');
 
     return true;
+  }
+
+  /*
+   * Assert a signal from OBS is as expected, if it is not received
+   * within 5 seconds or is not as expected then throw an error.
+   */
+  private async assertNextSignal(value: string): Promise<void> {
+    // Don't wait more than 5 seconds for the signal.
+    let signalInfo = await Promise.race([
+      this._signalQueue.shift(),
+      new Promise((_, reject) => {
+        setTimeout(reject, 5000, "OBS didn't signal " + value + " in time")}
+      )
+    ]);
+
+    // Assert the type is as expected.
+    if (signalInfo.type !== "recording") {
+      console.error("[ObsRecorder] " + signalInfo);
+      console.error("[ObsRecorder] Signal type unexpected", signalInfo.signal, value);
+      throw Error("OBS behaved unexpectedly (2)");
+    }
+
+    // Assert the signal value is as expected.
+    if (signalInfo.signal !== value) {
+      console.error("[ObsRecorder] " + signalInfo);
+      console.error("[ObsRecorder] Signal value unexpected", signalInfo.signal, value);
+      throw Error("OBS behaved unexpectedly (3)");
+    }
+
+    console.debug("[ObsRecorder] Asserted OBS signal:", value);
+  }
+
+  /*
+   * Initialize the OBS IPC connector
+   */
+  private initOBS(): void {
+    console.debug('[ObsRecorder] Initializing OBS');
+
+    osn.NodeObs.IPC.host(`warcraft-recorder-${uuid()}`);
+    osn.NodeObs.SetWorkingDirectory(fixPathWhenPackaged(path.join(__dirname,'../../', 'node_modules', 'obs-studio-node')));
+
+    const obsDataPath = fixPathWhenPackaged(path.join(__dirname, 'osn-data')); // OBS Studio configs and logs
+    // Arguments: locale, path to directory where configuration and logs will be stored, your application version
+    const initResult = osn.NodeObs.OBS_API_initAPI('en-US', obsDataPath, '1.0.0');
+
+    if (initResult !== 0) {
+      const errorMessage = obsInitErrors[initResult.toString()] || `An unknown error #${initResult} was encountered while initializing OBS.`;
+
+      console.error('[ObsRecorder] OBS init failure', errorMessage);
+
+      this.shutdown();
+
+      throw Error(errorMessage);
+    }
+
+    osn.NodeObs.OBS_service_connectOutputSignals((signalInfo: any) => {
+      this._signalQueue.push(signalInfo);
+    });
+
+    this._initialized = true;
+
+    console.debug('[ObsRecorder] OBS initialized');
   }
 };
