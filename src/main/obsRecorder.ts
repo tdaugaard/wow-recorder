@@ -12,15 +12,6 @@ const osn = require("obs-studio-node");
 let scene = null;
 
 /*
-* Reconfigure the recorder without destroying it.
-*/
-const reconfigure = (options: RecorderOptionsType) => {
-  configureOBS(options.bufferStorageDir);
-  scene = setupScene(options.monitorIndex);
-  setupSources(scene, options.audioInputDeviceId, options.audioOutputDeviceId);
-}
-
-/*
 * initOBS
 */
 const initOBS = () => {
@@ -320,6 +311,7 @@ export default class ObsRecorder {
     this._options = options;
 
     initOBS();
+    this._initialized = true;
   }
 
   get initialized(): boolean {
@@ -336,19 +328,23 @@ export default class ObsRecorder {
     }
 
     if (options) {
-      ObsRecorder._instance.reconfigureObs();
+      ObsRecorder._instance.reconfigure();
     }
 
     return ObsRecorder._instance;
   }
 
   /*
-  * Reconfigure the recorder without destroying it.
-  */
-  reconfigure(options: RecorderOptionsType): void {
-    this._options = options;
+   * Reconfigure the recorder without destroying it.
+   */
+  reconfigure(options?: RecorderOptionsType): void {
+    if (options)  {
+      this._options = options;
+    }
 
-    this.reconfigureObs();
+    configureOBS(this._options.bufferStorageDir);
+    scene = setupScene(this._options.monitorIndex);
+    setupSources(scene, this._options.audioInputDeviceId, this._options.audioOutputDeviceId);
   }
 
   /*
@@ -399,10 +395,5 @@ export default class ObsRecorder {
     console.debug('[ObsRecorder] Shutdown successfully');
 
     return true;
-  }
-
-  private reconfigureObs(): void {
-    reconfigure(this._options);
-    this._initialized = true;
   }
 };
