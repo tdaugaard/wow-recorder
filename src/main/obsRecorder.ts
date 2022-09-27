@@ -4,10 +4,10 @@ import { getAvailableAudioInputDevices, getAvailableAudioOutputDevices } from ".
 import { RecorderOptionsType } from "./recorder";
 import { OurDisplayType } from "./types";
 import { Size } from "electron";
+import { v4 as uuid } from 'uuid';
 const waitQueue = new WaitQueue<any>();
 const path = require('path');
 const osn = require("obs-studio-node");
-const { v4: uuid } = require('uuid');
 
 let obsInitialized = false;
 let scene = null;
