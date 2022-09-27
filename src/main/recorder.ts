@@ -6,8 +6,7 @@ import { getDungeonByMapId, getEncounterNameById, getVideoResultText, getInstanc
 import { VideoCategory } from './constants';
 import fs from 'fs';
 import { ChallengeModeDungeon } from './keystone';
-
-const obsRecorder = require('./obsRecorder');
+import ObsRecorder from './obsRecorder';
 
 type RecorderOptionsType = {
     storageDir: string;
@@ -26,6 +25,7 @@ type RecorderOptionsType = {
     private _isRecording: boolean = false;
     private _isRecordingBuffer: boolean = false;
     private _bufferRestartIntervalID?: any;
+    private _obsRecorder: ObsRecorder;
     private _options: RecorderOptionsType;
 
     /**
@@ -43,7 +43,7 @@ type RecorderOptionsType = {
             this.cleanupBuffer(0);
         }
 
-        obsRecorder.initialize(options);
+        this._obsRecorder = ObsRecorder.getInstance(options);
         if (mainWindow) mainWindow.webContents.send('refreshState');
     }
 
@@ -97,7 +97,7 @@ type RecorderOptionsType = {
         }
 
         console.log(addColor("[Recorder] Start recording buffer", "cyan"));
-        await obsRecorder.start();
+        await this._obsRecorder.start();
         this._isRecordingBuffer = true;
         if (mainWindow) mainWindow.webContents.send('updateStatus', AppStatus.ReadyToRecord);
     
@@ -122,7 +122,7 @@ type RecorderOptionsType = {
         clearInterval(this._bufferRestartIntervalID);
         this._isRecordingBuffer = false;   
 
-        await obsRecorder.stop();
+        await this._obsRecorder.stop();
         if (mainWindow) mainWindow.webContents.send('updateStatus', AppStatus.WaitingForWoW);
         this.cleanupBuffer(1);
     }
@@ -136,10 +136,10 @@ type RecorderOptionsType = {
      */
     restartBuffer = async () => {
         console.log(addColor("[Recorder] Restart recording buffer", "cyan"));
-        await obsRecorder.stop();
+        await this._obsRecorder.stop();
 
         setTimeout(() => {
-            obsRecorder.start();
+            this._obsRecorder.start();
         }, 5000);
 
         this.cleanupBuffer(1);
@@ -178,7 +178,7 @@ type RecorderOptionsType = {
         setTimeout(async () => {           
             // Take the actions to stop the recording.
             if (!this._isRecording) return;
-            await obsRecorder.stop();
+            await this._obsRecorder.stop();
             this._isRecording = false;
             this._isRecordingBuffer = false;
 
@@ -261,13 +261,13 @@ type RecorderOptionsType = {
      */
     shutdown = () => {
         if (this._isRecording) {
-            obsRecorder.stop();       
+            this._obsRecorder.stop();
             this._isRecording = false;
         } else if (this._isRecordingBuffer) {
             this.stopBuffer()
         }
 
-        obsRecorder.shutdown();
+        this._obsRecorder.shutdown();
 
     }
 
@@ -284,13 +284,13 @@ type RecorderOptionsType = {
         });
       
         if (this._isRecording) {
-            obsRecorder.stop();       
+            this._obsRecorder.stop();
             this._isRecording = false;
         } else if (this._isRecordingBuffer) {
             this.stopBuffer()
         }
 
-        obsRecorder.reconfigure(this._options);
+        this._obsRecorder.reconfigure(this._options);
         if (mainWindow) mainWindow.webContents.send('refreshState');
     }
 

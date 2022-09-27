@@ -15,11 +15,11 @@ import {
   getAvailableDisplays,
 } from './util';
 import { watchLogs, pollWowProcess, runRecordingTest, forceStopRecording } from './logutils';
-const obsRecorder = require('./obsRecorder');
 import { Recorder, RecorderOptionsType } from './recorder';
 import { getAvailableAudioInputDevices, getAvailableAudioOutputDevices } from './obsAudioDeviceUtils';
 import { AppStatus, VideoPlayerSettings } from './types';
 import ConfigService from './configService';
+import ObsRecorder from './obsRecorder';
 
 let recorder: Recorder;
 
@@ -523,7 +523,7 @@ ipcMain.on('recorder', (_event, args) => {
 app.on('window-all-closed', () => {
   console.log("[Main] User closed app");
   if (recorder) recorder.cleanupBuffer(0);
-  obsRecorder.shutdown();
+  ObsRecorder.getInstance().shutdown();
   app.quit();
 });
 

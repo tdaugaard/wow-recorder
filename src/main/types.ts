@@ -113,6 +113,20 @@ type FileInfo = {
     mtime: number;
 };
 
+const enum ObsSignal {
+    Starting = 'starting',
+    Start = 'start',
+    Activate = 'activate',
+    Stopping = 'stopping',
+    Stop = 'stop',
+    Deactivate = 'deactivate',
+    Reconnect = 'reconnect',
+    ReconnectSuccess = 'reconnect_success',
+    Writing = 'writing',
+    Wrote = 'wrote',
+    WriteError = 'writing_error',
+};
+
 export {
     AppStatus,
     UnitFlags,
@@ -124,4 +138,5 @@ export {
     RaidInstanceType,
     FileInfo,
     FileFinderCallbackType,
+    ObsSignal,
 }

@@ -2,14 +2,13 @@ import { fixPathWhenPackaged, getAvailableDisplays } from "./util";
 import WaitQueue from 'wait-queue';
 import { getAvailableAudioInputDevices, getAvailableAudioOutputDevices } from "./obsAudioDeviceUtils";
 import { RecorderOptionsType } from "./recorder";
-import { OurDisplayType } from "./types";
+import { ObsSignal, OurDisplayType } from "./types";
 import { Size } from "electron";
 import { v4 as uuid } from 'uuid';
 const waitQueue = new WaitQueue<any>();
 const path = require('path');
 const osn = require("obs-studio-node");
 
-let obsInitialized = false;
 let scene = null;
 
 /*
@@ -19,20 +18,6 @@ const reconfigure = (options: RecorderOptionsType) => {
   configureOBS(options.bufferStorageDir);
   scene = setupScene(options.monitorIndex);
   setupSources(scene, options.audioInputDeviceId, options.audioOutputDeviceId);
-}
-
-/*
-* Init the library, launch OBS Studio instance, configure it, set up sources and scene
-*/
-const initialize = (options: RecorderOptionsType) => {
-  if (obsInitialized) {
-    console.warn("[OBS] OBS is already initialized");
-    return;
-  }
-
-  initOBS();
-  reconfigure(options);
-  obsInitialized = true;
 }
 
 /*
@@ -58,7 +43,7 @@ const initOBS = () => {
 
     console.error('[OBS] OBS init failure', errorMessage);
 
-    shutdown();
+    ObsRecorder.getInstance().shutdown();
 
     throw Error(errorMessage);
   }
@@ -235,54 +220,6 @@ const setupSources = (scene: any, audioInputDeviceId: string, audioOutputDeviceI
 }
 
 /*
-* start
-*/
-const start = async () => {
-  if (!obsInitialized) {
-    throw Error("OBS not initialised")
-  }
-
-  console.log("[OBS] obsRecorder: start");
-  osn.NodeObs.OBS_service_startRecording();
-  assertNextSignal("start");
-}
-
-/*
-* stop
-*/
-const stop = async () => {
-  console.log("[OBS] obsRecorder: stop");
-  osn.NodeObs.OBS_service_stopRecording();
-  assertNextSignal("stopping");
-  assertNextSignal("stop");
-  assertNextSignal("wrote");
-}
-
-/*
-* shutdown
-*/
-const shutdown = () => {
-  if (!obsInitialized) {
-    console.debug('[OBS]  OBS is already shut down!');
-    return false;
-  }
-
-  console.debug('[OBS]  Shutting down OBS...');
-
-  try {
-    osn.NodeObs.OBS_service_removeCallback();
-    osn.NodeObs.IPC.disconnect();
-    obsInitialized = false;
-  } catch(e) {
-    throw Error('Exception when shutting down OBS process' + e);
-  }
-
-  console.debug('[OBS]  OBS shutdown successfully');
-
-  return true;
-}
-
-/*
 * setSetting
 */
 const setSetting = (category: any, parameter: any, value: any) => {
@@ -336,16 +273,15 @@ const getAvailableValues = (category: any, subcategory: any, parameter: any) => 
   return parameterSettings.values.map( (value: any) => Object.values(value)[0]);
 }
 
-
 /*
 * Assert a signal from OBS is as expected, if it is not received
-* within 5 seconds or is not as expected then throw an error. 
+* within 5 seconds or is not as expected then throw an error.
 */
 const assertNextSignal = async (value: string) => {
 
   // Don't wait more than 5 seconds for the signal.
   let signalInfo = await Promise.race([
-    waitQueue.shift(), 
+    waitQueue.shift(),
     new Promise((_, reject) => {
       setTimeout(reject, 5000, "OBS didn't signal " + value + " in time")}
     )
@@ -368,10 +304,105 @@ const assertNextSignal = async (value: string) => {
   console.debug("[OBS] Asserted OBS signal:", value);
 }
 
-export {
-  initialize,
-  start,
-  stop,
-  shutdown,
-  reconfigure,
-}
+export default class ObsRecorder {
+  /**
+   * Holds the singleton instance for this class as created via
+   * `ObsRecorder.getInstance()`.
+   */
+  private static _instance: ObsRecorder;
+  private _options: RecorderOptionsType;
+  private _initialized: boolean = false;
+
+  /*
+  * Init the library, launch OBS Studio instance, configure it, set up sources and scene
+  */
+  private constructor(options: RecorderOptionsType) {
+    this._options = options;
+
+    initOBS();
+  }
+
+  get initialized(): boolean {
+    return this._initialized;
+  }
+
+  static getInstance(options?: RecorderOptionsType): ObsRecorder {
+    if (!ObsRecorder._instance) {
+      if (!options) {
+        throw Error('[ObsRecorder] Cannot instantiate instance of ObsRecorder without options.')
+      }
+
+      ObsRecorder._instance = new ObsRecorder(options);
+    }
+
+    if (options) {
+      ObsRecorder._instance.reconfigureObs();
+    }
+
+    return ObsRecorder._instance;
+  }
+
+  /*
+  * Reconfigure the recorder without destroying it.
+  */
+  reconfigure(options: RecorderOptionsType): void {
+    this._options = options;
+
+    this.reconfigureObs();
+  }
+
+  /*
+   * start
+   */
+  async start(): Promise<void> {
+    if (!this._initialized) {
+      throw Error("OBS not initialised")
+    }
+
+    console.log("[ObsRecorder] Start recording");
+
+    osn.NodeObs.OBS_service_startRecording();
+    assertNextSignal(ObsSignal.Start);
+  }
+
+  /*
+   * stop
+   */
+  async stop(): Promise<void> {
+    console.log("[ObsRecorder] Stop recording");
+
+    osn.NodeObs.OBS_service_stopRecording();
+    assertNextSignal(ObsSignal.Stopping);
+    assertNextSignal(ObsSignal.Stop);
+    assertNextSignal(ObsSignal.Wrote);
+  }
+
+  /*
+   * shutdown
+   */
+  shutdown() {
+    if (!this._initialized) {
+      console.debug('[ObsRecorder] Already shut down!');
+      return false;
+    }
+
+    console.debug('[ObsRecorder] Shutting down');
+
+    try {
+      osn.NodeObs.OBS_service_removeCallback();
+      osn.NodeObs.IPC.disconnect();
+      this._initialized = false;
+    } catch(e) {
+      throw Error('Exception when shutting down OBS process' + e);
+    }
+
+    console.debug('[ObsRecorder] Shutdown successfully');
+
+    return true;
+  }
+
+  private reconfigureObs(): void {
+    reconfigure(this._options);
+    this._initialized = true;
+  }
+};
