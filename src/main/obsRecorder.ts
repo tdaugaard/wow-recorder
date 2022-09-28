@@ -76,39 +76,6 @@ const setOBSVideoResolution = (res: Size, paramString: string) => {
 }
 
 /*
-* setupScene
-*/
-const setupScene = (monitorIndex: number): any => {
-  // Correct the monitorIndex. In config we start a 1 so it's easy for users. 
-  const monitorIndexFromZero = monitorIndex - 1;
-  console.info("[OBS] monitorIndexFromZero:", monitorIndexFromZero);
-  const selectedDisplay = displayInfo(monitorIndexFromZero);
-  if (!selectedDisplay) {
-    throw Error(`[OBS] No such display with index: ${monitorIndexFromZero}.`)
-  }
-
-  setOBSVideoResolution(selectedDisplay.physicalSize, 'Base');
-
-  // TODO: Output should eventually be moved into a setting field to be scaled down. For now it matches the monitor resolution.
-  setOBSVideoResolution(selectedDisplay.physicalSize, 'Output');
-
-  const videoSource = osn.InputFactory.create('monitor_capture', 'desktop-video');
-
-  // Update source settings:
-  let settings = videoSource.settings;
-  settings['monitor'] = monitorIndexFromZero;
-  videoSource.update(settings);
-  videoSource.save();
-
-  // A scene is necessary here to properly scale captured screen size to output video size
-  const scene = osn.SceneFactory.create('test-scene');
-  const sceneItem = scene.add(videoSource);
-  sceneItem.scale = { x: 1.0, y: 1.0 };
-
-  return scene;
-}
-
-/*
 * setSetting
 */
 const setSetting = (category: any, parameter: any, value: any) => {
@@ -172,10 +139,12 @@ export default class ObsRecorder {
   private _initialized: boolean = false;
   private _signalQueue = new WaitQueue<any>();
   private _obsEncoders: string[] = [];
+  private _scene: any = null;
 
-  /*
-  * Init the library, launch OBS Studio instance, configure it, set up sources and scene
-  */
+  /**
+   * Init the library, launch OBS Studio instance, configure it, set up sources and scene.
+   * Constructor is intentionally private to prevent instantiation outside of `getInstance()`.
+   */
   private constructor(options: RecorderOptionsType) {
     this._options = options;
 
@@ -188,6 +157,10 @@ export default class ObsRecorder {
     return this._initialized;
   }
 
+  /**
+   * Get the instance of the class as a singletone.
+   * There should only ever be one instance created and his method faciliates that.
+   */
   static getInstance(options?: RecorderOptionsType): ObsRecorder {
     if (!ObsRecorder._instance) {
       if (!options) {
@@ -213,7 +186,7 @@ export default class ObsRecorder {
     }
 
     this.configureOBS();
-    scene = setupScene(this._options.monitorIndex);
+    this.setupScene();
     this.setupSources();
   }
 
@@ -256,6 +229,37 @@ export default class ObsRecorder {
     setSetting('Video', 'FPSCommon', 60);
 
     console.debug('[ObsRecorder] OBS Configured');
+  }
+
+  /*
+  * setupScene
+  */
+  private setupScene(): void {
+    // Correct the monitorIndex. In config we start a 1 so it's easy for users.
+    const monitorIndexFromZero = this._options.monitorIndex - 1;
+    console.info("[ObsRecorder] monitorIndexFromZero:", monitorIndexFromZero);
+    const selectedDisplay = displayInfo(monitorIndexFromZero);
+    if (!selectedDisplay) {
+      throw Error(`[ObsRecorder] No such display with index: ${monitorIndexFromZero}.`)
+    }
+
+    setOBSVideoResolution(selectedDisplay.physicalSize, 'Base');
+
+    // TODO: Output should eventually be moved into a setting field to be scaled down. For now it matches the monitor resolution.
+    setOBSVideoResolution(selectedDisplay.physicalSize, 'Output');
+
+    const videoSource = osn.InputFactory.create('monitor_capture', 'desktop-video');
+
+    // // Update source settings:
+    const settings = videoSource.settings;
+    settings['monitor'] = monitorIndexFromZero;
+    videoSource.update(settings);
+    videoSource.save();
+
+    // A scene is necessary here to properly scale captured screen size to output video size
+    this._scene = osn.SceneFactory.create('test-scene');
+    const sceneItem = this._scene.add(videoSource);
+    sceneItem.scale = { x: 1.0, y: 1.0 };
   }
 
   /*
@@ -312,13 +316,11 @@ export default class ObsRecorder {
   * setupSources
   */
   setupSources(): void {
-    if (!scene) {
+    if (!this._scene) {
       throw Error('[ObsRecorder] No scene exists; cannot continue');
     }
 
-    osn.Global.setOutputSource(1, scene);
-
-    console.log(osn.NodeObs.OBS_service_resetAudioContext());
+    osn.Global.setOutputSource(1, this._scene);
 
     const { audioInputDeviceId, audioOutputDeviceId } = this._options;
 
