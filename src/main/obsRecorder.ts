@@ -8,8 +8,6 @@ import { v4 as uuid } from 'uuid';
 const path = require('path');
 const osn = require("obs-studio-node");
 
-let scene = null;
-
 const obsInitErrors: { [key: string]: string } = {
   '-2': 'DirectX could not be found on your system. Please install the latest version of DirectX for your machine here <https://www.microsoft.com/en-us/download/details.aspx?id=35?> and try again.',
   '-5': 'Failed to initialize OBS. Your video drivers may be out of date, or Streamlabs OBS may not be supported on your system.',
@@ -27,8 +25,13 @@ const displayInfo = (displayIndex: number): OurDisplayType | undefined => {
 }
 
 /**
- * Find the resolution from `resolutions` which closest match the one given in
- * `target`.
+ * Given a none-whole monitor resolution, find the closest one that
+ * OBS supports and set the corospoding setting in `Video.Untitled.{paramString}`
+ *
+ * @remarks
+ * Useful when windows scaling is not set to 100% (125%, 150%, etc) on higher resolution monitors,
+ * meaning electron `screen.getAllDisplays()` will return a none integer `scaleFactor`, causing
+ * the calucated monitor resolution to be none-whole.
  */
 const getClosestResolution = (resolutions: string[], target: Size): string => {
   // Split string like '2560x1440' into [2560, 1440]
@@ -57,25 +60,6 @@ const getClosestResolution = (resolutions: string[], target: Size): string => {
 };
 
 /*
-* Given a none-whole monitor resolution, find the closest one that 
-* OBS supports and set the corospoding setting in Video.Untitled.{paramString}
-* 
-* @remarks
-* Useful when windows scaling is not set to 100% (125%, 150%, etc) on higher resolution monitors, 
-* meaning electron screen.getAllDisplays() will return a none integer scaleFactor, causing 
-* the calucated monitor resolution to be none-whole.
-*
-* @throws
-* Throws an error if no matching resolution is found.
-*/
-const setOBSVideoResolution = (res: Size, paramString: string) => {
-  const availableResolutions = getAvailableValues('Video', 'Untitled', paramString);
-  const closestResolution = getClosestResolution(availableResolutions, res);
-
-  setSetting('Video', paramString, closestResolution);
-}
-
-/*
 * setSetting
 */
 const setSetting = (category: any, parameter: any, value: any) => {
@@ -102,9 +86,9 @@ const setSetting = (category: any, parameter: any, value: any) => {
 }
 
 /*
-* getAvailableValues
+* Get a list of possible configuration values for a given category and subcategory.
 */
-const getAvailableValues = (category: any, subcategory: any, parameter: any) => {
+const getConfigValues = (category: any, subcategory: any, parameter: any) => {
   const categorySettings = osn.NodeObs.OBS_settings_getSettings(category).data;
 
   if (!categorySettings) {
@@ -194,7 +178,7 @@ export default class ObsRecorder {
    * Return an array of available output encoders from OBS½
    */
   getObsEncoders(): string[] {
-    return getAvailableValues('Output', 'Recording', 'RecEncoder');
+    return getConfigValues('Output', 'Recording', 'RecEncoder');
   }
 
   /*
@@ -231,6 +215,13 @@ export default class ObsRecorder {
     console.debug('[ObsRecorder] OBS Configured');
   }
 
+  private setOBSVideoResolution(res: Size, paramString: string): void {
+    const availableResolutions = getConfigValues('Video', 'Untitled', paramString);
+    const closestResolution = getClosestResolution(availableResolutions, res);
+
+    setSetting('Video', paramString, closestResolution);
+  }
+
   /*
   * setupScene
   */
@@ -243,10 +234,10 @@ export default class ObsRecorder {
       throw Error(`[ObsRecorder] No such display with index: ${monitorIndexFromZero}.`)
     }
 
-    setOBSVideoResolution(selectedDisplay.physicalSize, 'Base');
+    this.setOBSVideoResolution(selectedDisplay.physicalSize, 'Base');
 
     // TODO: Output should eventually be moved into a setting field to be scaled down. For now it matches the monitor resolution.
-    setOBSVideoResolution(selectedDisplay.physicalSize, 'Output');
+    this.setOBSVideoResolution(selectedDisplay.physicalSize, 'Output');
 
     const videoSource = osn.InputFactory.create('monitor_capture', 'desktop-video');
 
