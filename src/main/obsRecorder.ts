@@ -13,60 +13,6 @@ const obsInitErrors: { [key: string]: string } = {
   '-5': 'Failed to initialize OBS. Your video drivers may be out of date, or Streamlabs OBS may not be supported on your system.',
 };
 
-/*
-* setSetting
-*/
-const setSetting = (category: any, parameter: any, value: any) => {
-  let oldValue;
-
-  console.debug('[OBS] OBS: setSetting', category, parameter, value);
-
-  // Getting settings container
-  const settings = osn.NodeObs.OBS_settings_getSettings(category).data;
-
-  settings.forEach((subCategory: any) => {
-    subCategory.parameters.forEach((param: any) => {
-      if (param.name === parameter) {        
-        oldValue = param.currentValue;
-        param.currentValue = value;
-      }
-    });
-  });
-
-  // Saving updated settings container
-  if (value != oldValue) {
-    osn.NodeObs.OBS_settings_saveSettings(category, settings);
-  }
-}
-
-/*
-* Get a list of possible configuration values for a given category and subcategory.
-*/
-const getConfigValues = (category: any, subcategory: any, parameter: any) => {
-  const categorySettings = osn.NodeObs.OBS_settings_getSettings(category).data;
-
-  if (!categorySettings) {
-    console.warn(`[OBS] There is no category ${category} in OBS settings`);
-    return;
-  }
-
-  const subcategorySettings = categorySettings.find((sub: any) => sub.nameSubCategory === subcategory);
-
-  if (!subcategorySettings) {
-    console.warn(`[OBS] There is no subcategory ${subcategory} for OBS settings category ${category}`);
-    return;
-  }
-
-  const parameterSettings = subcategorySettings.parameters.find((param: any) => param.name === parameter);
-  
-  if (!parameterSettings) {
-    console.warn(`[OBS] There is no parameter ${parameter} for OBS settings category ${category}.${subcategory}`);
-    return;
-  }
-
-  return parameterSettings.values.map( (value: any) => Object.values(value)[0]);
-}
-
 export default class ObsRecorder {
   /**
    * Holds the singleton instance for this class as created via
@@ -132,7 +78,7 @@ export default class ObsRecorder {
    * Return an array of available output encoders from OBS½
    */
   getObsEncoders(): string[] {
-    return getConfigValues('Output', 'Recording', 'RecEncoder');
+    return this.setConfigValues('Output', 'Recording', 'RecEncoder');
   }
 
   /*
@@ -143,28 +89,28 @@ export default class ObsRecorder {
 
     const obsEncoder = this._obsEncoders.at(-1) || 'x264';
 
-    setSetting('Output', 'Mode', 'Advanced');
-    setSetting('Output', 'RecEncoder', obsEncoder);
+    this.setConfigValue('Output', 'Mode', 'Advanced');
+    this.setConfigValue('Output', 'RecEncoder', obsEncoder);
 
     // Set output path and video format.
-    setSetting('Output', 'RecFilePath', this._options.bufferStorageDir);
-    setSetting('Output', 'RecFormat', 'mp4');
+    this.setConfigValue('Output', 'RecFilePath', this._options.bufferStorageDir);
+    this.setConfigValue('Output', 'RecFormat', 'mp4');
 
     if (obsEncoder.toLowerCase().includes("amf")) {
       // For AMF encoders, can't set 'lossless' bitrate.
       // It interprets it as zero and fails to start.
       // See https://github.com/aza547/wow-recorder/issues/40.
-      setSetting('Output', 'Recbitrate', 50000);
+      this.setConfigValue('Output', 'Recbitrate', 50000);
     }
     else {
       // No idea how this works, but it does.
     // No idea how this works, but it does.
       // No idea how this works, but it does.
-      setSetting('Output', 'Recbitrate', 'Lossless');
+      this.setConfigValue('Output', 'Recbitrate', 'Lossless');
     }
 
-    setSetting('Output', 'Recmax_bitrate', 300000);
-    setSetting('Video', 'FPSCommon', 60);
+    this.setConfigValue('Output', 'Recmax_bitrate', 300000);
+    this.setConfigValue('Video', 'FPSCommon', 60);
 
     console.debug('[ObsRecorder] OBS Configured');
   }
@@ -173,10 +119,10 @@ export default class ObsRecorder {
    * Set the resolution for OBS for the given `paramString` sub-category
    */
   private setOBSVideoResolution(res: Size, paramString: string): void {
-    const availableResolutions = getConfigValues('Video', 'Untitled', paramString);
+    const availableResolutions = this.setConfigValues('Video', 'Untitled', paramString);
     const closestResolution = this.getClosestResolution(availableResolutions, res);
 
-    setSetting('Video', paramString, closestResolution);
+    this.setConfigValue('Video', paramString, closestResolution);
   }
 
   /*
@@ -272,13 +218,13 @@ export default class ObsRecorder {
 
     const { audioInputDeviceId, audioOutputDeviceId } = this._options;
 
-    setSetting('Output', 'Track1Name', 'Mixed: all sources');
+    this.setConfigValue('Output', 'Track1Name', 'Mixed: all sources');
     let currentTrack = 2;
 
     getAvailableAudioInputDevices()
       .forEach(device => {
         const source = osn.InputFactory.create('wasapi_input_capture', 'mic-audio', { device_id: device.id });
-        setSetting('Output', `Track${currentTrack}Name`, device.name);
+        this.setConfigValue('Output', `Track${currentTrack}Name`, device.name);
         source.audioMixers = 1 | (1 << currentTrack-1); // Bit mask to output to only tracks 1 and current track
         source.muted = audioInputDeviceId === 'none' || (audioInputDeviceId !== 'all' && device.id !== audioInputDeviceId);
         console.log(`[ObsRecorder] Selecting audio input device: ${device.name} ${source.muted ? ' [MUTED]' : ''}`)
@@ -290,7 +236,7 @@ export default class ObsRecorder {
     getAvailableAudioOutputDevices()
       .forEach(device => {
         const source = osn.InputFactory.create('wasapi_output_capture', 'desktop-audio', { device_id: device.id });
-        setSetting('Output', `Track${currentTrack}Name`, device.name);
+        this.setConfigValue('Output', `Track${currentTrack}Name`, device.name);
         source.audioMixers = 1 | (1 << currentTrack-1); // Bit mask to output to only tracks 1 and current track
         source.muted = audioOutputDeviceId === 'none' || (audioOutputDeviceId !== 'all' && device.id !== audioOutputDeviceId);
         console.log(`[ObsRecorder] Selecting audio output device: ${device.name} ${source.muted ? ' [MUTED]' : ''}`)
@@ -299,7 +245,7 @@ export default class ObsRecorder {
         currentTrack++;
       });
 
-    setSetting('Output', 'RecTracks', parseInt('1'.repeat(currentTrack-1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
+    this.setConfigValue('Output', 'RecTracks', parseInt('1'.repeat(currentTrack-1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
   }
 
   /*
@@ -407,5 +353,59 @@ export default class ObsRecorder {
     // At the position of `minValue` in `indexArray`, we'll find the actual
     // resolution in `resolutions` at the same index.
     return resolutions[indexArray.indexOf(minValue)];
+  }
+
+  /**
+   * setSetting
+   */
+  setConfigValue(category: any, parameter: any, value: any): void {
+    let oldValue;
+
+    console.debug('[ObsRecorder] OBS: setSetting', category, parameter, value);
+
+    // Getting settings container
+    const settings = osn.NodeObs.OBS_settings_getSettings(category).data;
+
+    settings.forEach((subCategory: any) => {
+      subCategory.parameters.forEach((param: any) => {
+        if (param.name === parameter) {
+          oldValue = param.currentValue;
+          param.currentValue = value;
+        }
+      });
+    });
+
+    // Saving updated settings container
+    if (value != oldValue) {
+      osn.NodeObs.OBS_settings_saveSettings(category, settings);
+    }
+  }
+
+  /**
+   * Get a list of possible configuration values for a given category and subcategory.
+   */
+  private setConfigValues(category: any, subcategory: any, parameter: any): any {
+    const categorySettings = osn.NodeObs.OBS_settings_getSettings(category).data;
+
+    if (!categorySettings) {
+      console.warn(`[ObsRecorder] There is no category ${category} in OBS settings`);
+      return;
+    }
+
+    const subcategorySettings = categorySettings.find((sub: any) => sub.nameSubCategory === subcategory);
+
+    if (!subcategorySettings) {
+      console.warn(`[ObsRecorder] There is no subcategory ${subcategory} for OBS settings category ${category}`);
+      return;
+    }
+
+    const parameterSettings = subcategorySettings.parameters.find((param: any) => param.name === parameter);
+
+    if (!parameterSettings) {
+      console.warn(`[ObsRecorder] There is no parameter ${parameter} for OBS settings category ${category}.${subcategory}`);
+      return;
+    }
+
+    return parameterSettings.values.map((value: any) => Object.values(value)[0]);
   }
 };
