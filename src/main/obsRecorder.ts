@@ -14,52 +14,6 @@ const obsInitErrors: { [key: string]: string } = {
 };
 
 /*
-* Get information about primary display
-* @param zero starting monitor index
-*/
-const displayInfo = (displayIndex: number): OurDisplayType | undefined => {
-  const displays = getAvailableDisplays();
-  console.info("[OBS] Displays:", displays);
-
-  return displays.find(d => d.index === displayIndex);
-}
-
-/**
- * Given a none-whole monitor resolution, find the closest one that
- * OBS supports and set the corospoding setting in `Video.Untitled.{paramString}`
- *
- * @remarks
- * Useful when windows scaling is not set to 100% (125%, 150%, etc) on higher resolution monitors,
- * meaning electron `screen.getAllDisplays()` will return a none integer `scaleFactor`, causing
- * the calucated monitor resolution to be none-whole.
- */
-const getClosestResolution = (resolutions: string[], target: Size): string => {
-  // Split string like '2560x1440' into [2560, 1440]
-  const numericResolutions = resolutions.map((v: string) => {
-    return v.split('x').map(v => parseInt(v, 10));
-  });
-
-  // Create an array of values with the target resolution subtracted.
-  // We'll end up with an array where one element has a very low number,
-  // which is at the index we're after.
-  //
-  // We multiply width/height by a different number to avoid having mirrored
-  // resolutions (1080x1920 vs 1920x1080) have the same sorting value.
-  const indexArray = numericResolutions.map(v => {
-      return Math.abs(((target.width - v[0]) * 2) + ((target.height - v[1]) * 4));
-  });
-
-  // Find the minimum value from the indexing array. This value will
-  // be at the index in `indexArray` matching the one in `resolutions`
-  // where we'll find the closest matching resolution of the available ones.
-  const minValue = Math.min(...indexArray);
-
-  // At the position of `minValue` in `indexArray`, we'll find the actual
-  // resolution in `resolutions` at the same index.
-  return resolutions[indexArray.indexOf(minValue)];
-};
-
-/*
 * setSetting
 */
 const setSetting = (category: any, parameter: any, value: any) => {
@@ -215,9 +169,12 @@ export default class ObsRecorder {
     console.debug('[ObsRecorder] OBS Configured');
   }
 
+  /**
+   * Set the resolution for OBS for the given `paramString` sub-category
+   */
   private setOBSVideoResolution(res: Size, paramString: string): void {
     const availableResolutions = getConfigValues('Video', 'Untitled', paramString);
-    const closestResolution = getClosestResolution(availableResolutions, res);
+    const closestResolution = this.getClosestResolution(availableResolutions, res);
 
     setSetting('Video', paramString, closestResolution);
   }
@@ -229,7 +186,7 @@ export default class ObsRecorder {
     // Correct the monitorIndex. In config we start a 1 so it's easy for users.
     const monitorIndexFromZero = this._options.monitorIndex - 1;
     console.info("[ObsRecorder] monitorIndexFromZero:", monitorIndexFromZero);
-    const selectedDisplay = displayInfo(monitorIndexFromZero);
+    const selectedDisplay = this.displayInfo(monitorIndexFromZero);
     if (!selectedDisplay) {
       throw Error(`[ObsRecorder] No such display with index: ${monitorIndexFromZero}.`)
     }
@@ -405,5 +362,50 @@ export default class ObsRecorder {
     this._initialized = true;
 
     console.debug('[ObsRecorder] OBS initialized');
+  }
+
+  /*
+  * Get information about primary display
+  */
+  private displayInfo(displayIndex: number): OurDisplayType | undefined {
+    const displays = getAvailableDisplays();
+    console.info("[ObsRecorder] Displays:", displays);
+
+    return displays.find(d => d.index === displayIndex);
+  }
+
+  /**
+   * Given a none-whole monitor resolution, find the closest one that
+   * OBS supports and set the corospoding setting in `Video.Untitled.{paramString}`
+   *
+   * @remarks
+   * Useful when windows scaling is not set to 100% (125%, 150%, etc) on higher resolution monitors,
+   * meaning electron `screen.getAllDisplays()` will return a none integer `scaleFactor`, causing
+   * the calucated monitor resolution to be none-whole.
+   */
+  private getClosestResolution(resolutions: string[], target: Size): string {
+    // Split string like '2560x1440' into [2560, 1440]
+    const numericResolutions = resolutions.map((v: string) => {
+      return v.split('x').map(v => parseInt(v, 10));
+    });
+
+    // Create an array of values with the target resolution subtracted.
+    // We'll end up with an array where one element has a very low number,
+    // which is at the index we're after.
+    //
+    // We multiply width/height by a different number to avoid having mirrored
+    // resolutions (1080x1920 vs 1920x1080) have the same sorting value.
+    const indexArray = numericResolutions.map(v => {
+        return Math.abs(((target.width - v[0]) * 2) + ((target.height - v[1]) * 4));
+    });
+
+    // Find the minimum value from the indexing array. This value will
+    // be at the index in `indexArray` matching the one in `resolutions`
+    // where we'll find the closest matching resolution of the available ones.
+    const minValue = Math.min(...indexArray);
+
+    // At the position of `minValue` in `indexArray`, we'll find the actual
+    // resolution in `resolutions` at the same index.
+    return resolutions[indexArray.indexOf(minValue)];
   }
 };
