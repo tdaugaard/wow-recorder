@@ -5,6 +5,7 @@ import { RecorderOptionsType } from "./recorder";
 import { ObsSignal, OurDisplayType } from "./types";
 import { Size } from "electron";
 import { v4 as uuid } from 'uuid';
+import { IScene } from "obs-studio-node";
 const path = require('path');
 const osn = require("obs-studio-node");
 
@@ -23,7 +24,7 @@ export default class ObsRecorder {
   private _initialized: boolean = false;
   private _signalQueue = new WaitQueue<any>();
   private _obsEncoders: string[] = [];
-  private _scene: any = null;
+  private _scene: IScene | undefined;
 
   /**
    * Init the library, launch OBS Studio instance, configure it, set up sources and scene.
@@ -61,7 +62,7 @@ export default class ObsRecorder {
     return ObsRecorder._instance;
   }
 
-  /*
+  /**
    * Reconfigure the recorder without destroying it.
    */
   reconfigure(options?: RecorderOptionsType): void {
@@ -81,7 +82,7 @@ export default class ObsRecorder {
     return this.setConfigValues('Output', 'Recording', 'RecEncoder');
   }
 
-  /*
+  /**
    * configureOBS
    */
   private configureOBS(): void {
@@ -125,9 +126,9 @@ export default class ObsRecorder {
     this.setConfigValue('Video', paramString, closestResolution);
   }
 
-  /*
-  * setupScene
-  */
+  /**
+   * setupScene
+   */
   private setupScene(): void {
     // Correct the monitorIndex. In config we start a 1 so it's easy for users.
     const monitorIndexFromZero = this._options.monitorIndex - 1;
@@ -151,13 +152,13 @@ export default class ObsRecorder {
     videoSource.save();
 
     // A scene is necessary here to properly scale captured screen size to output video size
-    this._scene = osn.SceneFactory.create('test-scene');
+    this._scene = (osn.SceneFactory.create('test-scene') as IScene);
     const sceneItem = this._scene.add(videoSource);
     sceneItem.scale = { x: 1.0, y: 1.0 };
   }
 
-  /*
-   * start
+  /**
+   * Start recording
    */
   async start(): Promise<void> {
     if (!this._initialized) {
@@ -170,8 +171,8 @@ export default class ObsRecorder {
     this.assertNextSignal(ObsSignal.Start);
   }
 
-  /*
-   * stop
+  /**
+   * Stop recording
    */
   async stop(): Promise<void> {
     console.log("[ObsRecorder] Stop recording");
@@ -182,8 +183,8 @@ export default class ObsRecorder {
     this.assertNextSignal(ObsSignal.Wrote);
   }
 
-  /*
-   * shutdown
+  /**
+   * Shutdown OBS
    */
   shutdown() {
     if (!this._initialized) {
@@ -206,8 +207,8 @@ export default class ObsRecorder {
     return true;
   }
 
-  /*
-  * setupSources
+  /**
+  * Setup OBS recording sources
   */
   setupSources(): void {
     if (!this._scene) {
@@ -248,7 +249,7 @@ export default class ObsRecorder {
     this.setConfigValue('Output', 'RecTracks', parseInt('1'.repeat(currentTrack-1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
   }
 
-  /*
+  /**
    * Assert a signal from OBS is as expected, if it is not received
    * within 5 seconds or is not as expected then throw an error.
    */
@@ -278,7 +279,7 @@ export default class ObsRecorder {
     console.debug("[ObsRecorder] Asserted OBS signal:", value);
   }
 
-  /*
+  /**
    * Initialize the OBS IPC connector
    */
   private initOBS(): void {
@@ -310,9 +311,9 @@ export default class ObsRecorder {
     console.debug('[ObsRecorder] OBS initialized');
   }
 
-  /*
-  * Get information about primary display
-  */
+  /**
+   * Get information about a display
+   */
   private displayInfo(displayIndex: number): OurDisplayType | undefined {
     const displays = getAvailableDisplays();
     console.info("[ObsRecorder] Displays:", displays);
