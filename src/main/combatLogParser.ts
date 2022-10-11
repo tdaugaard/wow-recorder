@@ -300,6 +300,12 @@ class CombatLogParser extends EventEmitter {
         const logEventType = logLine.type();
 
         this.emit(logEventType, logLine, flavour);
+
+        // If the event type has a listener attached, emit another event
+        // 'handled' with the full log line as well as the parsed line.
+        if (this.eventNames().includes(logEventType)) {
+            this.emit('handled', logLine, line);
+        }
     }
 
     /**

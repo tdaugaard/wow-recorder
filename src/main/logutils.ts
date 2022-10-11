@@ -51,6 +51,7 @@ combatLogParser
     .on('COMBATANT_INFO', handleCombatantInfoLine)
     .on('SPELL_AURA_APPLIED', handleSpellAuraAppliedLine)
     .on('UNIT_DIED', handleUnitDiedLine)
+    .on('handled', saveHandledLogLine)
 ;
 
 // If we haven't received data in a while, we're probably AFK and should stop recording.
@@ -681,6 +682,15 @@ const forceStopRecording = () => {
         combatLogParser.watchPath(logdir);
     })
 }
+
+/**
+ * Save the lines from a log file that we've handled in the log parser
+ * This receives full plain text log lines from the combat log from combat
+ * log events that we have event listeners on CombatLogParser for.
+ */
+const saveHandledLogLine = (_parsed: LogLine, raw: string) => {
+    console.log(raw);
+};
 
 /**
  * Check Windows task list and find any WoW process.
