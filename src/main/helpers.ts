@@ -11,6 +11,7 @@ import { dungeonsByMapId, instanceDifficulty, InstanceDifficultyType, instanceEn
 import { Metadata } from "./logutils";
 import { RaidInstanceType } from "./types";
 import util from 'util';
+import { Size } from "electron";
 
 /**
  * Get a result text appropriate for the video category that signifies a
@@ -127,3 +128,45 @@ export const getRaidByEncounterId = (zoneID?: number): RaidInstanceType | undefi
 export const inspectObject = (value: any): string => {
     return util.inspect(value, { colors: true, compact: false });
 }
+
+
+/**
+ * Parse a resolution string like '1920x1080' into a `Size` compatible
+ * format.
+ */
+export const parseResolutionsString = (value: string): Size => {
+    const [width, height] = value.split('x').map(v => parseInt(v, 10));
+
+    return { width, height };
+};
+
+
+/**
+ * Find the resolution from `resolutions` which closest match the one given in
+ * `target`.
+ */
+export const getClosestResolution = (resolutions: string[], target: Size): string => {
+    // Split string like '2560x1440' into [2560, 1440]
+    const numericResolutions = resolutions.map((v: string) => {
+      return v.split('x').map(v => parseInt(v, 10));
+    });
+
+    // Create an array of values with the target resolution subtracted.
+    // We'll end up with an array where one element has a very low number,
+    // which is at the index we're after.
+    //
+    // We multiply width/height by a different number to avoid having mirrored
+    // resolutions (1080x1920 vs 1920x1080) have the same sorting value.
+    const indexArray = numericResolutions.map(v => {
+        return Math.abs(((target.width - v[0]) * 2) + ((target.height - v[1]) * 4));
+    });
+
+    // Find the minimum value from the indexing array. This value will
+    // be at the index in `indexArray` matching the one in `resolutions`
+    // where we'll find the closest matching resolution of the available ones.
+    const minValue = Math.min(...indexArray);
+
+    // At the position of `minValue` in `indexArray`, we'll find the actual
+    // resolution in `resolutions` at the same index.
+    return resolutions[indexArray.indexOf(minValue)];
+};
