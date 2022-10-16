@@ -2,11 +2,11 @@ import { fixPathWhenPackaged, getAvailableDisplays } from "./util";
 import WaitQueue from 'wait-queue';
 import { getAvailableAudioInputDevices, getAvailableAudioOutputDevices } from "./obsAudioDeviceUtils";
 import { RecorderOptionsType } from "./recorder";
-import { Size } from "electron";
+import { OurDisplayType } from "./types";
+import { BrowserWindow, Rectangle, Size } from "electron";
+import { ISceneItem, IScene, IInput, ISource } from "obs-studio-node";
 import path from 'path';
 import { inspectObject } from "./helpers";
-import { ISceneItem, IScene, IInput, ISource } from "obs-studio-node";
-import { OurDisplayType } from "./types";
 const waitQueue = new WaitQueue<any>();
 const osn = require("obs-studio-node");
 const { v4: uuid } = require('uuid');
@@ -16,13 +16,14 @@ let obsInitialized = false;
 let timerVideoSourceSize: any;
 // Previous size of the video source as checked by checkVideoSourceSize()
 let lastVideoSourceSize: Size;
+let scene: IScene;
 
 /*
 * Reconfigure the recorder without destroying it.
 */
 const reconfigure = (options: RecorderOptionsType) => {
   configureOBS(options);
-  const scene = setupScene(options);
+  setupScene(options);
   setupSources(scene, options.audioInputDeviceId, options.audioOutputDeviceId);
 }
 
@@ -199,7 +200,7 @@ const setOBSVideoResolution = (res: Size, paramString: string) => {
 /*
 * setupScene
 */
-const setupScene = (options: RecorderOptionsType): IScene => {
+const setupScene = (options: RecorderOptionsType): void => {
   const outputResolution = parseResolutionsString(options.obsOutputResolution);
   let baseResolution: Size;
 
@@ -233,15 +234,13 @@ const setupScene = (options: RecorderOptionsType): IScene => {
 
   setOBSVideoResolution(baseResolution, 'Base');
 
-  const scene: IScene = osn.SceneFactory.create('main');
+  scene = osn.SceneFactory.create('main');
   const sceneItem = scene.add(videoSource);
   sceneItem.scale = { x: 1.0, y: 1.0 };
 
   console.log(`[OBS] Configured video input source with mode '${options.obsCaptureMode}'`, inspectObject(videoSource.settings))
 
   watchVideoSourceSize(sceneItem, videoSource, baseResolution);
-
-  return scene;
 }
 
 /**
@@ -523,6 +522,46 @@ const getObsAvailableRecEncoders = (): string[] => {
   return getAvailableValues('Output', 'Recording', 'RecEncoder');
 };
 
+let displayId = 'display1';
+
+const setupPreview = (window: BrowserWindow, bounds: Rectangle) => {
+  osn.NodeObs.OBS_content_createSourcePreviewDisplay(
+    window.getNativeWindowHandle(),
+    scene.name,
+    displayId,
+  );
+  osn.NodeObs.OBS_content_setShouldDrawUI(displayId, false);
+  osn.NodeObs.OBS_content_setPaddingSize(displayId, 0);
+  // Match padding color with main window background color
+  //osn.NodeObs.OBS_content_setPaddingColor(displayId, 255, 255, 255);
+
+  return resizePreview(bounds);
+}
+
+let initY = 0
+const resizePreview = (bounds: Rectangle) => {
+  const aspectRatio = bounds.width / bounds.height;
+  const displayWidth = Math.floor(bounds.width);
+  const displayHeight = Math.round(displayWidth / aspectRatio);
+  const displayX = Math.floor(bounds.x);
+  const displayY = Math.floor(bounds.y);
+  if (initY === 0) {
+    initY = displayY
+  }
+  osn.NodeObs.OBS_content_resizeDisplay(displayId, displayWidth, displayHeight);
+  osn.NodeObs.OBS_content_moveDisplay(displayId, displayX, displayY);
+  console.log({
+    bounds,
+    aspectRatio,
+    displayWidth,
+    displayHeight,
+    displayX,
+    displayY,
+  });
+
+  return { height: displayHeight }
+}
+
 export {
   initialize,
   start,
@@ -532,4 +571,6 @@ export {
   getObsResolutions,
   getObsLastRecording,
   getObsAvailableRecEncoders,
+  setupPreview,
+  resizePreview,
 }

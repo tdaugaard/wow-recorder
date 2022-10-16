@@ -115,6 +115,7 @@ const videoPlayerSettings: VideoPlayerSettings = {
  */
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let sceneWindow: BrowserWindow | null;
 let tray = null;
 
 if (process.env.NODE_ENV === 'production') {
@@ -237,8 +238,55 @@ const createWindow = async () => {
 
   setupTray();
 
-  // Open urls in the user's browser
-  mainWindow.webContents.setWindowOpenHandler((edata) => {
+  openUrlsInUserBrowser(mainWindow);
+};
+
+const openSceneWindow = async () => {
+  if (isDebug) {
+    await installExtensions();
+  }
+
+  const RESOURCES_PATH = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets')
+    : path.join(__dirname, '../../assets');
+
+  const getAssetPath = (...paths: string[]): string => {
+    return path.join(RESOURCES_PATH, ...paths);
+  };
+
+  sceneWindow = new BrowserWindow({
+    show: false,
+    width: 800,
+    height: 600,
+    resizable: process.env.NODE_ENV !== 'production',
+    icon: getAssetPath('./icon/settings-icon.svg'),
+    frame: false,
+    webPreferences: {
+      webSecurity: false,
+      preload: app.isPackaged
+        ? path.join(__dirname, 'preload.js')
+        : path.join(__dirname, '../../.erb/dll/preload.js'),
+    },
+  });
+
+  sceneWindow.loadURL(resolveHtmlPath("scene.index.html"));
+
+  sceneWindow.on('ready-to-show', () => {
+    if (!sceneWindow) {
+      throw new Error('"sceneWindow" is not defined');
+    }
+
+    sceneWindow.show();
+  });
+
+  sceneWindow.on('closed', () => sceneWindow = null);
+
+  openUrlsInUserBrowser(sceneWindow);
+};
+
+// Open urls in the user's browser
+const openUrlsInUserBrowser = (window: BrowserWindow): void => {
+  window.webContents.setWindowOpenHandler(edata => {
     shell.openExternal(edata.url);
     return { action: 'deny' };
   });
@@ -362,7 +410,22 @@ ipcMain.on('mainWindow', (_event, args) => {
     console.log("[Main] User clicked quit");
     mainWindow.close();
   }
-})
+});
+
+/**
+ * mainWindow event listeners.
+ */
+ipcMain.handle('preview', (_event, args) => {
+  if (mainWindow === null) return;
+
+  if (args[0] === 'init') {
+    return obsRecorder.setupPreview(sceneWindow, args[1], args[2]);
+  }
+
+  if (args[0] === 'bounds') {
+    return;
+  }
+});
 
 /**
  * Create or reconfigure the recorder instance
@@ -466,6 +529,37 @@ ipcMain.on('settingsWindow', (event, args) => {
     return;
   }
 })
+
+/**
+ * settingsWindow event listeners.
+ */
+ipcMain.on('sceneWindow', (event, args) => {
+  if (args[0] == 'create') {
+      console.log('[Main] User clicked open scene editor');
+      openSceneWindow();
+      return;
+  }
+
+  if (sceneWindow === null) return;
+
+  if (args[0] === 'quit') {
+    console.log('[Main] User closed scene editor');
+    sceneWindow.close();
+  }
+
+  if (args[0] === 'update') {
+    console.log('[Main] User updated scene');
+
+    sceneWindow.once('closed', () => {
+      recorderOptions = loadRecorderOptions(cfg);
+      makeRecorder(recorderOptions);
+
+      pollWowProcess();
+    })
+
+    sceneWindow.close();
+  }
+});
 
 /**
  * contextMenu event listeners.

@@ -5,7 +5,7 @@ const ipc = window.electron.ipcRenderer;
 export default function SettingsButton() {
 
   const openSettings = () => {
-    ipc.sendMessage('settingsWindow', ['create']);
+    ipc.sendMessage('sceneWindow', ['create']);
   };
 
   return (

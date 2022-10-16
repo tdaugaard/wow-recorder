@@ -25,6 +25,16 @@ const devtoolsConfig =
       }
     : {};
 
+const webpackPluginDefaults = {
+  minify: {
+    collapseWhitespace: true,
+    removeAttributeQuotes: true,
+    removeComments: true,
+  },
+  isBrowser: false,
+  isDevelopment: process.env.NODE_ENV !== 'production',
+};
+
 const configuration: webpack.Configuration = {
   ...devtoolsConfig,
 
@@ -120,30 +130,25 @@ const configuration: webpack.Configuration = {
     }),
 
     new HtmlWebpackPlugin({
+      ...webpackPluginDefaults,
       filename: 'mainWindow.index.html',
       template: path.join(webpackPaths.srcRendererPath, 'index.ejs'),
       chunks: ['mainWindow'],
-      minify: {
-        collapseWhitespace: true,
-        removeAttributeQuotes: true,
-        removeComments: true,
-      },
-      isBrowser: false,
-      isDevelopment: process.env.NODE_ENV !== 'production',
     }),
 
     new HtmlWebpackPlugin({
+      ...webpackPluginDefaults,
       filename: 'settings.index.html',
       template: path.join(webpackPaths.srcSettingsPath, 'index.ejs'),
       chunks: ['settings'],
-      minify: {
-        collapseWhitespace: true,
-        removeAttributeQuotes: true,
-        removeComments: true,
-      },
-      isBrowser: false,
-      isDevelopment: process.env.NODE_ENV !== 'production',
-    })    
+    }),
+
+    new HtmlWebpackPlugin({
+      ...webpackPluginDefaults,
+      filename: 'scene.index.html',
+      template: path.join(webpackPaths.srcScenePath, 'index.ejs'),
+      chunks: ['scene'],
+    }),
   ],
 };
 

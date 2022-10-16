@@ -39,6 +39,18 @@ if (
   execSync('npm run postinstall');
 }
 
+const webpackPluginDefaults = {
+  minify: {
+    collapseWhitespace: true,
+    removeAttributeQuotes: true,
+    removeComments: true,
+  },
+  isBrowser: false,
+  env: process.env.NODE_ENV,
+  isDevelopment: process.env.NODE_ENV !== 'production',
+  nodeModules: webpackPaths.appNodeModulesPath,
+};
+
 const configuration: webpack.Configuration = {
   devtool: 'inline-source-map',
 
@@ -56,8 +68,13 @@ const configuration: webpack.Configuration = {
       `webpack-dev-server/client?http://localhost:${port}/dist`,
       'webpack/hot/only-dev-server',
       path.join(webpackPaths.srcSettingsPath, 'index.tsx'),
+    ],
+    scene: [
+      `webpack-dev-server/client?http://localhost:${port}/dist`,
+      'webpack/hot/only-dev-server',
+      path.join(webpackPaths.srcScenePath, 'index.tsx'),
     ]
-  }, 
+  },
 
   output: {
     path: webpackPaths.distRendererPath,
@@ -139,33 +156,24 @@ const configuration: webpack.Configuration = {
     new ReactRefreshWebpackPlugin(),
 
     new HtmlWebpackPlugin({
+      ...webpackPluginDefaults,
       filename: path.join('mainWindow.index.html'),
       template: path.join(webpackPaths.srcRendererPath, 'index.ejs'),
       chunks: ['mainWindow'],
-      minify: {
-        collapseWhitespace: true,
-        removeAttributeQuotes: true,
-        removeComments: true,
-      },
-      isBrowser: false,
-      env: process.env.NODE_ENV,
-      isDevelopment: process.env.NODE_ENV !== 'production',
-      nodeModules: webpackPaths.appNodeModulesPath,
     }),
 
     new HtmlWebpackPlugin({
+      ...webpackPluginDefaults,
       filename: path.join('settings.index.html'),
       template: path.join(webpackPaths.srcSettingsPath, 'index.ejs'),
       chunks: ['settings'],
-      minify: {
-        collapseWhitespace: true,
-        removeAttributeQuotes: true,
-        removeComments: true,
-      },
-      isBrowser: false,
-      env: process.env.NODE_ENV,
-      isDevelopment: process.env.NODE_ENV !== 'production',
-      nodeModules: webpackPaths.appNodeModulesPath,
+    }),
+
+    new HtmlWebpackPlugin({
+      ...webpackPluginDefaults,
+      filename: path.join('scene.index.html'),
+      template: path.join(webpackPaths.srcScenePath, 'index.ejs'),
+      chunks: ['scene'],
     }),
   ],
 
